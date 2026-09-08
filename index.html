@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorio Cuántico de Electromagnetismo 3D</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <h1>⚛️ Laboratorio Cuántico: Campo Eléctrico, Direccionalidad y Equipotenciales</h1>
+    </header>
+
+    <div class="main-container">
+        <aside class="control-panel">
+            <h2>Gestión de Cargas (Máx. 4)</h2>
+            
+            <div id="cargas-container">
+                <!-- Se generan dinámicamente desde app.js -->
+            </div>
+
+            <div class="btn-group">
+                <button id="btn-add" class="btn btn-add">+ Agregar Carga</button>
+                <button id="btn-remove" class="btn btn-remove">- Eliminar Carga</button>
+            </div>
+
+            <div class="control-group highlighted">
+                <h3>Multímetro Cuántico</h3>
+                <p class="help-text">Arrastra el sensor amarillo para medir el espacio.</p>
+                <p><strong>Potencial ($V$):</strong> <span id="v-read">0.00</span> V</p>
+                <p><strong>Campo ($|E|$):</strong> <span id="e-read">0.00</span> N/C</p>
+                <p><strong>Dirección ($\theta$):</strong> <span id="ang-read">0.0</span>°</p>
+            </div>
+
+            <div class="control-group">
+                <h3>Capas Visuales</h3>
+                <label><input type="checkbox" id="chk-field" checked> Líneas de Campo con Flechas</label>
+                <label><input type="checkbox" id="chk-equi" checked> Equipotenciales Simétricas</label>
+                <label><input type="checkbox" id="chk-quantum" checked> Malla/Fondo Cuántico</label>
+            </div>
+
+            <div class="control-group">
+                <h3>Medición $q_1$ - $q_2$</h3>
+                <p><strong>Distancia ($r$):</strong> <span id="r-disp">0.00</span> m</p>
+                <p><strong>Fuerza ($F$):</strong> <span id="f-disp">0.00</span> N</p>
+                <p><strong>Interacción:</strong> <span id="f-type">-</span></p>
+            </div>
+        </aside>
+
+        <main class="simulation-area">
+            <div class="canvas-wrapper">
+                <canvas id="simCanvas"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="fuerzaChart"></canvas>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
