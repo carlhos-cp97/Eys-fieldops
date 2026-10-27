@@ -9,7 +9,7 @@
 </head>
 <body>
     <header>
-        <h1>⚛️ Laboratorio Cuántico: Campo Eléctrico, Direccionalidad y Equipotenciales</h1>
+        <h1>⚛️ Laboratorio Virtual: Campo Eléctrico, Magnético y Equipotenciales</h1>
     </header>
 
     <div class="main-container">
@@ -17,7 +17,7 @@
             <h2>Gestión de Cargas (Máx. 4)</h2>
             
             <div id="cargas-container">
-                <!-- Se generan dinámicamente desde app.js -->
+                <!-- Generado dinámicamente -->
             </div>
 
             <div class="btn-group">
@@ -27,10 +27,17 @@
 
             <div class="control-group highlighted">
                 <h3>Multímetro Cuántico</h3>
-                <p class="help-text">Arrastra el sensor amarillo para medir el espacio.</p>
+                <p class="help-text">Arrastra el sensor amarillo dentro del lienzo.</p>
                 <p><strong>Potencial ($V$):</strong> <span id="v-read">0.00</span> V</p>
-                <p><strong>Campo ($|E|$):</strong> <span id="e-read">0.00</span> N/C</p>
+                <p><strong>Campo ($\vert{}E\vert{}$):</strong> <span id="e-read">0.00</span> N/C</p>
                 <p><strong>Dirección ($\theta$):</strong> <span id="ang-read">0.0</span>°</p>
+            </div>
+
+            <div class="control-group">
+                <h3>Control de Zoom</h3>
+                <label for="zoom-range">Nivel: <span id="zoom-disp">1.0</span>x</label>
+                <input type="range" id="zoom-range" min="0.5" max="2.5" value="1.0" step="0.1">
+                <button id="btn-reset-zoom" class="btn btn-secondary" style="margin-top:6px; width:100%;">Restablecer Vista</button>
             </div>
 
             <div class="control-group">
@@ -39,13 +46,6 @@
                 <label><input type="checkbox" id="chk-equi" checked> Equipotenciales Simétricas</label>
                 <label><input type="checkbox" id="chk-quantum" checked> Malla/Fondo Cuántico</label>
             </div>
-
-            <div class="control-group">
-                <h3>Medición $q_1$ - $q_2$</h3>
-                <p><strong>Distancia ($r$):</strong> <span id="r-disp">0.00</span> m</p>
-                <p><strong>Fuerza ($F$):</strong> <span id="f-disp">0.00</span> N</p>
-                <p><strong>Interacción:</strong> <span id="f-type">-</span></p>
-            </div>
         </aside>
 
         <main class="simulation-area">
@@ -53,8 +53,24 @@
                 <canvas id="simCanvas"></canvas>
             </div>
             
-            <div class="chart-container">
-                <canvas id="fuerzaChart"></canvas>
+            <div class="info-dashboard">
+                <div class="physics-card">
+                    <h4>📐 Interacción de Coulomb ($q_1 - q_2$)</h4>
+                    <p><strong>Distancia ($r$):</strong> <span id="r-disp">0.00</span> m</p>
+                    <p><strong>Fuerza ($F$):</strong> <span id="f-disp">0.00</span> N</p>
+                    <p><strong>Interacción:</strong> <span id="f-type">-</span></p>
+                </div>
+
+                <div class="physics-card">
+                    <h4>🧲 Cálculos Magnéticos & Energía</h4>
+                    <p><strong>Inducción Magnética ($\vert{}B\vert{}$):</strong> <span id="b-read">0.00e+0</span> T</p>
+                    <p><strong>Densidad Energía ($u_E$):</strong> <span id="ue-read">0.00e+0</span> J/m³</p>
+                    <p><strong>Permitividad ($\varepsilon_0$):</strong> $8.854 \times 10^{-12}$ F/m</p>
+                </div>
+
+                <div class="chart-card">
+                    <canvas id="fuerzaChart"></canvas>
+                </div>
             </div>
         </main>
     </div>
