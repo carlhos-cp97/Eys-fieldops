@@ -1,13 +1,19 @@
 const K = 8.98755e9;
-const SCALE = 100;
+const EPSILON_0 = 8.854187e-12;
+const MU_0 = 4 * Math.PI * 1e-7;
+const C_SPEED = 299792458;
+const SCALE = 100; // 100px = 1m
 
 const canvas = document.getElementById('simCanvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
 
-// Elementos de la UI
+// UI Elements
 const cargasContainer = document.getElementById('cargas-container');
 const btnAdd = document.getElementById('btn-add');
 const btnRemove = document.getElementById('btn-remove');
+const zoomRange = document.getElementById('zoom-range');
+const zoomDisp = document.getElementById('zoom-disp');
+const btnResetZoom = document.getElementById('btn-reset-zoom');
 
 const rDisp = document.getElementById('r-disp');
 const fDisp = document.getElementById('f-disp');
@@ -16,36 +22,70 @@ const fType = document.getElementById('f-type');
 const vRead = document.getElementById('v-read');
 const eRead = document.getElementById('e-read');
 const angRead = document.getElementById('ang-read');
+const bRead = document.getElementById('b-read');
+const ueRead = document.getElementById('ue-read');
 
 const chkField = document.getElementById('chk-field') || { checked: true };
 const chkEqui = document.getElementById('chk-equi') || { checked: true };
 const chkQuantum = document.getElementById('chk-quantum') || { checked: true };
 
-// Partículas vibrantes de vacío cuántico
+// Estado de Transformación Zoom y Cam
+let zoomLevel = 1.0;
+let panOffset = { x: 0, y: 0 };
+
 let quantumParticles = [];
 
-// Configuración inicial de cargas
 let cargas = [
     { id: 1, x: 250, y: 250, q: 20e-9, radius: 22, isDragging: false },
     { id: 2, x: 550, y: 250, q: -20e-9, radius: 22, isDragging: false }
 ];
 
-let probe = { x: 400, y: 150, radius: 14, isDragging: false };
+let probe = { x: 400, y: 150, vx: 0, vy: 0, lastX: 400, lastY: 150, radius: 14, isDragging: false };
 let draggedObj = null;
+
+// Inicialización Chart.js
+let fuerzaChart = null;
+const chartElem = document.getElementById('fuerzaChart');
+if (chartElem && typeof Chart !== 'undefined') {
+    const chartCtx = chartElem.getContext('2d');
+    fuerzaChart = new Chart(chartCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Fuerza de Coulomb (N) vs Distancia (m)',
+                data: [],
+                borderColor: '#c084fc',
+                backgroundColor: 'rgba(192, 132, 252, 0.15)',
+                borderWidth: 2,
+                tension: 0.3,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: { title: { display: true, text: 'Distancia (m)', color: '#9ca3af' }, ticks: { color: '#9ca3af' } },
+                y: { title: { display: true, text: 'Fuerza (N)', color: '#9ca3af' }, ticks: { color: '#9ca3af' } }
+            },
+            plugins: { legend: { labels: { color: '#f3f4f6' } } }
+        }
+    });
+}
 
 function initCanvasSize() {
     if (!canvas) return;
     const parent = canvas.parentElement;
-    const w = parent ? parent.clientWidth : 800;
-    const h = parent ? parent.clientHeight : 500;
-    canvas.width = w > 0 ? w : 800;
-    canvas.height = h > 0 ? h : 500;
+    canvas.width = parent ? parent.clientWidth : 800;
+    canvas.height = parent ? parent.clientHeight : 500;
 
     quantumParticles = [];
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 90; i++) {
         quantumParticles.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
+            x: Math.random() * canvas.width * 2 - canvas.width / 2,
+            y: Math.random() * canvas.height * 2 - canvas.height / 2,
             size: Math.random() * 2.5 + 0.8,
             alpha: Math.random(),
             speed: Math.random() * 0.02 + 0.008,
@@ -54,73 +94,147 @@ function initCanvasSize() {
     }
 }
 
-// Renderizado de UI con botones - y + que cambian de 2 en 2
+// Transformación Coordenadas Pantalla <-> Mundo Zoom
+function screenToWorld(sx, sy) {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    return {
+        x: (sx - cx - panOffset.x) / zoomLevel + cx,
+        y: (sy - cy - panOffset.y) / zoomLevel + cy
+    };
+}
+
+function worldToScreen(wx, wy) {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    return {
+        x: (wx - cx) * zoomLevel + cx + panOffset.x,
+        y: (wy - cy) * zoomLevel + cy + panOffset.y
+    };
+}
+
+// Renderizado Tarjetas UI con incrementos de 2 en 2
 function renderCargasUI() {
     if (!cargasContainer) return;
     cargasContainer.innerHTML = '';
     cargas.forEach((c, index) => {
         const div = document.createElement('div');
-        div.style.marginBottom = '12px';
+        div.style.marginBottom = '10px';
         div.style.background = 'rgba(255, 255, 255, 0.05)';
-        div.style.padding = '10px';
+        div.style.padding = '8px';
         div.style.borderRadius = '8px';
-        div.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-        
+
         const qVal = Math.round(c.q * 1e9);
         const signoStr = qVal > 0 ? '+' : (qVal < 0 ? '-' : '0');
 
         div.innerHTML = `
-            <div style="color:#e2e8f0; font-weight:bold; font-size:13px; margin-bottom:4px;">
+            <div style="color:#e2e8f0; font-weight:bold; font-size:12px; margin-bottom:4px;">
                 Carga ${index + 1} (${signoStr})
             </div>
-            <div style="color:#94a3b8; font-size:12px; margin-bottom:8px;">
+            <div style="color:#94a3b8; font-size:11px; margin-bottom:6px;">
                 Valor: <span style="color:#f8fafc; font-weight:bold;">${qVal}</span> nC
             </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <button class="btn-step btn-minus" data-index="${index}" style="background:#ef4444; color:#fff; border:none; width:30px; height:30px; border-radius:6px; font-weight:bold; font-size:16px; cursor:pointer; flex-shrink:0;">-</button>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button class="btn-step btn-minus" data-index="${index}" style="background:#ef4444; color:#fff; border:none; width:28px; height:28px; border-radius:4px; font-weight:bold; font-size:16px; cursor:pointer;">-</button>
                 <input type="range" min="-100" max="100" value="${qVal}" step="2" data-index="${index}" style="flex-grow:1; cursor:pointer;">
-                <button class="btn-step btn-plus" data-index="${index}" style="background:#10b981; color:#fff; border:none; width:30px; height:30px; border-radius:6px; font-weight:bold; font-size:16px; cursor:pointer; flex-shrink:0;">+</button>
+                <button class="btn-step btn-plus" data-index="${index}" style="background:#10b981; color:#fff; border:none; width:28px; height:28px; border-radius:4px; font-weight:bold; font-size:16px; cursor:pointer;">+</button>
             </div>
         `;
         cargasContainer.appendChild(div);
     });
 
-    // Eventos para el Slider
     cargasContainer.querySelectorAll('input[type="range"]').forEach(input => {
         input.addEventListener('input', (e) => {
             const idx = parseInt(e.target.dataset.index);
             if (cargas[idx]) {
-                const val = parseFloat(e.target.value);
-                cargas[idx].q = val * 1e-9;
+                cargas[idx].q = parseFloat(e.target.value) * 1e-9;
                 renderCargasUI();
             }
         });
     });
 
-    // Eventos para el Botón Menos (-) bajando de 2 en 2
     cargasContainer.querySelectorAll('.btn-minus').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const idx = parseInt(e.target.dataset.index);
             if (cargas[idx]) {
                 let currentVal = Math.round(cargas[idx].q * 1e9);
-                currentVal = Math.max(-100, currentVal - 2);
-                cargas[idx].q = currentVal * 1e-9;
+                cargas[idx].q = Math.max(-100, currentVal - 2) * 1e-9;
                 renderCargasUI();
             }
         });
     });
 
-    // Eventos para el Botón Más (+) subiendo de 2 en 2
     cargasContainer.querySelectorAll('.btn-plus').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const idx = parseInt(e.target.dataset.index);
             if (cargas[idx]) {
                 let currentVal = Math.round(cargas[idx].q * 1e9);
-                currentVal = Math.min(100, currentVal + 2);
-                cargas[idx].q = currentVal * 1e-9;
+                cargas[idx].q = Math.min(100, currentVal + 2) * 1e-9;
                 renderCargasUI();
             }
         });
+    });
+}
+
+// Eventos de Zoom y Arrastre
+if (zoomRange) {
+    zoomRange.addEventListener('input', (e) => {
+        zoomLevel = parseFloat(e.target.value);
+        if (zoomDisp) zoomDisp.textContent = zoomLevel.toFixed(1);
+    });
+}
+
+if (btnResetZoom) {
+    btnResetZoom.addEventListener('click', () => {
+        zoomLevel = 1.0;
+        panOffset = { x: 0, y: 0 };
+        if (zoomRange) zoomRange.value = 1.0;
+        if (zoomDisp) zoomDisp.textContent = "1.0";
+    });
+}
+
+if (canvas) {
+    // Zoom con Rueda del Ratón
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomDelta = e.deltaY < 0 ? 0.1 : -0.1;
+        zoomLevel = Math.min(Math.max(0.5, zoomLevel + zoomDelta), 2.5);
+        if (zoomRange) zoomRange.value = zoomLevel.toFixed(1);
+        if (zoomDisp) zoomDisp.textContent = zoomLevel.toFixed(1);
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseWorld = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+
+        if (Math.hypot(mouseWorld.x - probe.x, mouseWorld.y - probe.y) < probe.radius + 12) {
+            probe.isDragging = true;
+            draggedObj = probe;
+            return;
+        }
+
+        for (let c of cargas) {
+            if (Math.hypot(mouseWorld.x - c.x, mouseWorld.y - c.y) < c.radius + 12) {
+                c.isDragging = true;
+                draggedObj = c;
+                return;
+            }
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!draggedObj) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseWorld = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        draggedObj.x = mouseWorld.x;
+        draggedObj.y = mouseWorld.y;
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (draggedObj) {
+            draggedObj.isDragging = false;
+            draggedObj = null;
+        }
     });
 }
 
@@ -131,8 +245,8 @@ if (btnAdd) {
         const offset = cargas.length * 60;
         cargas.push({
             id,
-            x: Math.min(180 + offset, canvas.width - 100),
-            y: Math.min(180 + offset, canvas.height - 100),
+            x: 200 + offset,
+            y: 200 + offset,
             q: 20e-9,
             radius: 22,
             isDragging: false
@@ -149,43 +263,7 @@ if (btnRemove) {
     });
 }
 
-// Eventos de Arrastre
-if (canvas) {
-    canvas.addEventListener('mousedown', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-
-        if (Math.hypot(mx - probe.x, my - probe.y) < probe.radius + 12) {
-            probe.isDragging = true;
-            draggedObj = probe;
-            return;
-        }
-
-        cargas.forEach(c => {
-            if (Math.hypot(mx - c.x, my - c.y) < c.radius + 12) {
-                c.isDragging = true;
-                draggedObj = c;
-            }
-        });
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-        if (!draggedObj) return;
-        const rect = canvas.getBoundingClientRect();
-        draggedObj.x = Math.max(20, Math.min(canvas.width - 20, e.clientX - rect.left));
-        draggedObj.y = Math.max(20, Math.min(canvas.height - 20, e.clientY - rect.top));
-    });
-
-    window.addEventListener('mouseup', () => {
-        if (draggedObj) {
-            draggedObj.isDragging = false;
-            draggedObj = null;
-        }
-    });
-}
-
-// Cálculo Físico
+// Física
 function getVectorCampo(px, py) {
     let Ex = 0, Ey = 0;
     cargas.forEach(c => {
@@ -232,12 +310,12 @@ function drawQuantumBackground() {
     ctx.lineWidth = 1;
     const gridStep = 32;
 
-    for (let x = 0; x < canvas.width; x += gridStep) {
+    for (let x = -canvas.width; x < canvas.width * 2; x += gridStep) {
         ctx.beginPath();
-        for (let y = 0; y < canvas.height; y += 12) {
+        for (let y = -canvas.height; y < canvas.height * 2; y += 12) {
             let V = getPotencial(x, y);
             let deformX = x + Math.sin(V * 0.002) * 3;
-            if (y === 0) ctx.moveTo(deformX, y);
+            if (y === -canvas.height) ctx.moveTo(deformX, y);
             else ctx.lineTo(deformX, y);
         }
         ctx.stroke();
@@ -257,7 +335,7 @@ function drawQuantumBackground() {
     });
 }
 
-// 2. Líneas Equipotenciales Exactas (Marching Squares a 90°)
+// 2. Líneas Equipotenciales Simétricas (Marching Squares a 90°)
 function drawEquipotentialsMarchingSquares() {
     if (!chkEqui.checked || !ctx) return;
 
@@ -269,7 +347,8 @@ function drawEquipotentialsMarchingSquares() {
     for (let i = 0; i <= cols; i++) {
         grid[i] = [];
         for (let j = 0; j <= rows; j++) {
-            grid[i][j] = getPotencial(i * gridStep, j * gridStep);
+            let worldP = screenToWorld(i * gridStep, j * gridStep);
+            grid[i][j] = getPotencial(worldP.x, worldP.y);
         }
     }
 
@@ -326,7 +405,7 @@ function drawSegment(p1, p2) {
     ctx.lineTo(p2.x, p2.y);
 }
 
-// 3. Líneas de Campo Continuas con Flechas (Runge-Kutta 4)
+// 3. Líneas de Campo Continuas (RK4)
 function drawFieldLinesWithArrows() {
     if (!chkField.checked || !ctx) return;
 
@@ -374,10 +453,6 @@ function drawFieldLinesWithArrows() {
                 currX = nextX;
                 currY = nextY;
 
-                if (currX < -50 || currX > canvas.width + 50 || currY < -50 || currY > canvas.height + 50) {
-                    break;
-                }
-
                 let hitTarget = false;
                 for (let target of cargas) {
                     if ((sign > 0 && target.q < 0) || (sign < 0 && target.q > 0)) {
@@ -394,9 +469,11 @@ function drawFieldLinesWithArrows() {
             if (points.length > 1) {
                 ctx.save();
                 ctx.beginPath();
-                ctx.moveTo(points[0].x, points[0].y);
+                let p0 = worldToScreen(points[0].x, points[0].y);
+                ctx.moveTo(p0.x, p0.y);
                 for (let p = 1; p < points.length; p++) {
-                    ctx.lineTo(points[p].x, points[p].y);
+                    let pt = worldToScreen(points[p].x, points[p].y);
+                    ctx.lineTo(pt.x, pt.y);
                 }
                 ctx.strokeStyle = '#38bdf8';
                 ctx.lineWidth = 2;
@@ -405,8 +482,9 @@ function drawFieldLinesWithArrows() {
             }
 
             arrowPoints.forEach(ap => {
+                let pt = worldToScreen(ap.x, ap.y);
                 ctx.save();
-                ctx.translate(ap.x, ap.y);
+                ctx.translate(pt.x, pt.y);
                 ctx.rotate(ap.angle);
                 ctx.fillStyle = '#f0f9ff';
                 ctx.beginPath();
@@ -423,21 +501,24 @@ function drawFieldLinesWithArrows() {
 }
 
 // 4. Esferas 3D con Aura
-function drawEsfera3D(x, y, radius, colorBase, signText) {
+function drawEsfera3DWorld(wx, wy, radius, colorBase, signText) {
     if (!ctx) return;
-    let glowGrad = ctx.createRadialGradient(x, y, radius * 0.3, x, y, radius * 2.5);
+    let pos = worldToScreen(wx, wy);
+    let rScaled = radius * zoomLevel;
+
+    let glowGrad = ctx.createRadialGradient(pos.x, pos.y, rScaled * 0.3, pos.x, pos.y, rScaled * 2.5);
     let colorGlow = colorBase === 'red' ? 'rgba(239, 68, 68, 0.5)' : (colorBase === 'blue' ? 'rgba(59, 130, 246, 0.5)' : 'rgba(234, 179, 8, 0.5)');
     glowGrad.addColorStop(0, colorGlow);
     glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
 
     ctx.beginPath();
-    ctx.arc(x, y, radius * 2.5, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, rScaled * 2.5, 0, Math.PI * 2);
     ctx.fillStyle = glowGrad;
     ctx.fill();
 
     let sphereGrad = ctx.createRadialGradient(
-        x - radius * 0.3, y - radius * 0.3, radius * 0.1,
-        x, y, radius
+        pos.x - rScaled * 0.3, pos.y - rScaled * 0.3, rScaled * 0.1,
+        pos.x, pos.y, rScaled
     );
 
     if (colorBase === 'red') {
@@ -455,16 +536,16 @@ function drawEsfera3D(x, y, radius, colorBase, signText) {
     }
 
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, rScaled, 0, Math.PI * 2);
     ctx.fillStyle = sphereGrad;
     ctx.fill();
 
     if (signText) {
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 15px sans-serif';
+        ctx.font = `bold ${Math.max(10, 15 * zoomLevel)}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(signText, x, y);
+        ctx.fillText(signText, pos.x, pos.y);
     }
 }
 
@@ -481,7 +562,7 @@ function loop() {
             cargas.forEach(c => {
                 let color = c.q > 0 ? 'red' : (c.q < 0 ? 'blue' : 'gray');
                 let signo = c.q > 0 ? '+' : (c.q < 0 ? '-' : '0');
-                drawEsfera3D(c.x, c.y, c.radius, color, signo);
+                drawEsfera3DWorld(c.x, c.y, c.radius, color, signo);
             });
 
             if (cargas.length >= 2) {
@@ -500,30 +581,54 @@ function loop() {
                     fType.textContent = (c1.q * c2.q > 0) ? "Repulsión" : "Atracción";
                     fType.style.color = (c1.q * c2.q > 0) ? "#f87171" : "#4ade80";
                 }
+
+                if (fuerzaChart) {
+                    if (fuerzaChart.data.labels.length > 25) {
+                        fuerzaChart.data.labels.shift();
+                        fuerzaChart.data.datasets[0].data.shift();
+                    }
+                    fuerzaChart.data.labels.push(r.toFixed(2));
+                    fuerzaChart.data.datasets[0].data.push(F);
+                    fuerzaChart.update();
+                }
             }
+
+            // Cálculo de Velocidad y Campo Magnético Inducido en la Sonda (Biot-Savart / Relatividad)
+            probe.vx = (probe.x - probe.lastX) * 60; // px/s
+            probe.vy = (probe.y - probe.lastY) * 60;
+            probe.lastX = probe.x;
+            probe.lastY = probe.y;
 
             let V_probe = getPotencial(probe.x, probe.y);
             let E_probe = getVectorCampo(probe.x, probe.y);
             let ang_deg = Math.atan2(E_probe.Ey, E_probe.Ex) * (180 / Math.PI);
 
+            // B_inducido = (v x E) / c^2
+            let vMag = Math.hypot(probe.vx, probe.vy) / SCALE; // m/s
+            let B_mag = (vMag * E_probe.Mag) / (C_SPEED * C_SPEED);
+            let uE = 0.5 * EPSILON_0 * (E_probe.Mag * E_probe.Mag);
+
             if (vRead) vRead.textContent = V_probe.toFixed(2);
             if (eRead) eRead.textContent = E_probe.Mag.toExponential(2);
             if (angRead) angRead.textContent = ang_deg.toFixed(1);
+            if (bRead) bRead.textContent = B_mag.toExponential(2);
+            if (ueRead) ueRead.textContent = uE.toExponential(2);
 
             if (E_probe.Mag > 0) {
-                let len = 35;
-                let vx = probe.x + (E_probe.Ex / E_probe.Mag) * len;
-                let vy = probe.y + (E_probe.Ey / E_probe.Mag) * len;
+                let pScreen = worldToScreen(probe.x, probe.y);
+                let len = 35 * zoomLevel;
+                let vx = pScreen.x + (E_probe.Ex / E_probe.Mag) * len;
+                let vy = pScreen.y + (E_probe.Ey / E_probe.Mag) * len;
 
                 ctx.beginPath();
-                ctx.moveTo(probe.x, probe.y);
+                ctx.moveTo(pScreen.x, pScreen.y);
                 ctx.lineTo(vx, vy);
                 ctx.strokeStyle = '#facc15';
                 ctx.lineWidth = 3;
                 ctx.stroke();
             }
 
-            drawEsfera3D(probe.x, probe.y, probe.radius, 'yellow', 'V');
+            drawEsfera3DWorld(probe.x, probe.y, probe.radius, 'yellow', 'V');
         }
     } catch (err) {
         console.error("Error en loop:", err);
@@ -532,7 +637,7 @@ function loop() {
     requestAnimationFrame(loop);
 }
 
-// Inicialización diferida
+// Inicialización
 window.addEventListener('DOMContentLoaded', () => {
     initCanvasSize();
     renderCargasUI();
